@@ -2,7 +2,11 @@ module godis
 
 go 1.21.4
 
-require github.com/rs/zerolog v1.32.0
+require (
+	github.com/google/uuid v1.6.0
+	github.com/rs/zerolog v1.32.0
+	github.com/tidwall/resp v0.1.1
+)
 
 require (
 	github.com/mattn/go-colorable v0.1.13 // indirect

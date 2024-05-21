@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"net"
 	"os"
 
@@ -26,8 +27,14 @@ type Server struct {
 	peers     map[*Peer]bool
 	ln        net.Listener
 	addPeerCh chan *Peer
-	msgCh     chan []byte
+	msgCh     chan Message
 	quitCh    chan struct{}
+	kv        *KV
+}
+
+type Message struct {
+	data []byte
+	peer *Peer
 }
 
 
@@ -42,7 +49,8 @@ func NewServer(cfg Config) *Server {
 		peers:     make(map[*Peer]bool),
 		addPeerCh: make(chan *Peer),
 		quitCh:    make(chan struct{}),
-		msgCh:     make(chan []byte),
+		msgCh:     make(chan Message),
+		kv:        NewKV(),
 	}
 }
 
@@ -60,6 +68,7 @@ func (s *Server) Start() error {
 	return s.acceptLoop()
 }
 
+// 主进程
 func (s *Server) loop() {
 	for {
 		select {
@@ -75,6 +84,7 @@ func (s *Server) loop() {
 	}
 }
 
+// 处理请求
 func (s *Server) acceptLoop() error {
 	for {
 		conn, err := s.ln.Accept()
@@ -94,20 +104,47 @@ func (s *Server) handleConn(conn net.Conn) {
 	log.Info().Str("远程地址", conn.RemoteAddr().String()).Msg("new peer connected")
 
 	if err := peer.readLoop(); err != nil {
-		log.Error().Err(err).Str("远程地址", conn.RemoteAddr().String()).Msg("peer read err")
+		log.Error().Err(err).Str("远程地址", conn.RemoteAddr().String()).Msg("peer receive err")
 	}
 }
 
 
-func (s *Server) handleRawMessage(rawMsg []byte) error {
-	LogMessage(Blue, string(rawMsg))
-	return nil 
+func (s *Server) handleRawMessage(rawMsg Message) error {
+	
+	cmd, err := parseCommand(string(rawMsg.data))
+	if err != nil {
+		return err 
+	}
+	
+	switch v := cmd.(type) {
+	case *SetCommand:
+		return s.kv.Set(v.key, v.value)
+	case *GetCommand:
+		val, ok := s.kv.Get(v.key)
+		if !ok {
+			return fmt.Errorf("key not found")
+		}
+
+		// 写回去
+		_, err := rawMsg.peer.Send(val)
+		if err != nil {
+			log.Error().Err(err).Str("远程地址", rawMsg.peer.conn.RemoteAddr().String()).Msg("peer send err")
+		}
+
+		return nil 
+	default:
+		return fmt.Errorf("Unknown command type")
+	}
 }
 
+
+
+
 func main() {
-	srv := NewServer(Config{})
+	cfg := Config{}
+	srv := NewServer(cfg)
 	
 	if err := srv.Start(); err != nil {
-		panic(err)
+		log.Fatal().Err(err).Msg("server start error")
 	}
 }
