@@ -1,12 +1,13 @@
 package main
 
 import (
-	"fmt"
 	"net"
 	"os"
+	"fmt"
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"github.com/tidwall/resp"
 )
 
 func init() {
@@ -33,7 +34,7 @@ type Server struct {
 }
 
 type Message struct {
-	data []byte
+	cmd  Command
 	peer *Peer
 }
 
@@ -109,32 +110,35 @@ func (s *Server) handleConn(conn net.Conn) {
 }
 
 
-func (s *Server) handleRawMessage(rawMsg Message) error {
+func (s *Server) handleRawMessage(msg Message) error {
 	
-	cmd, err := parseCommand(string(rawMsg.data))
-	if err != nil {
-		return err 
-	}
-	
-	switch v := cmd.(type) {
+	switch v := msg.cmd.(type) {
 	case *SetCommand:
-		return s.kv.Set(v.key, v.value)
+		if err := s.kv.Set(v.key, v.value); err != nil {
+			return err
+		}
+		if err := resp.NewWriter(msg.peer.conn).WriteString("OK"); err != nil {
+			return err
+		}
 	case *GetCommand:
 		val, ok := s.kv.Get(v.key)
 		if !ok {
 			return fmt.Errorf("key not found")
 		}
-
-		// 写回去
-		_, err := rawMsg.peer.Send(val)
-		if err != nil {
-			log.Error().Err(err).Str("远程地址", rawMsg.peer.conn.RemoteAddr().String()).Msg("peer send err")
+		if err := resp.NewWriter(msg.peer.conn).WriteString(string(val)); err != nil {
+			return err
 		}
-
-		return nil 
-	default:
-		return fmt.Errorf("Unknown command type")
+	case *HelloCommand:
+		spec := map[string]string{
+			"server": "reids",
+		}
+		_, err := msg.peer.Send(respWriteMap(spec))
+		if err != nil {
+			return fmt.Errorf("peer send error: %s", err)
+		}
 	}
+
+	return nil 
 }
 
 

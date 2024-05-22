@@ -3,7 +3,7 @@ package client
 import (
 	"bytes"
 	"context"
-	"io"
+	"fmt"
 	"net"
 
 	"github.com/tidwall/resp"
@@ -20,8 +20,8 @@ func New(addr string) *Client {
 	}
 }
 
-// 模拟客户端 SET 指令执行请求
-func (c *Client) Set(ctx context.Context, key, val string) error {
+// 模拟客户端 GET 指令执行请求
+func (c *Client) Get(ctx context.Context, key string) error {
 	conn, err := net.Dial("tcp", c.addr)
 	if err != nil {
 		return err 
@@ -30,13 +30,17 @@ func (c *Client) Set(ctx context.Context, key, val string) error {
 	buf := &bytes.Buffer{}
 	wr := resp.NewWriter(buf)
 	wr.WriteArray([]resp.Value{
-		resp.StringValue("SET"),
+		resp.StringValue("GET"),
 		resp.StringValue(key),
-		resp.StringValue(val),
 	})
 
-	// _, err = conn.Write(buf.Bytes())
+	// 替代 io.Copy
+	
+	_, err = conn.Write(buf.Bytes())
 
-	_, err = io.Copy(conn, buf)
+	tmpBuf := make([]byte, 1024)
+	n, err := conn.Read(tmpBuf)
+	fmt.Println(string(tmpBuf[:n]))
+
 	return err
 }

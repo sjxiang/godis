@@ -5,7 +5,7 @@ import "sync"
 
 type KV struct {
 	data map[string][]byte
-	mu sync.Mutex
+	mu   sync.Mutex
 }
 
 func NewKV() *KV {
@@ -14,21 +14,18 @@ func NewKV() *KV {
 	}
 }
 
-func (kv *KV) Set(key, value string) error {
+func (kv *KV) Set(key, value []byte) error {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-	kv.data[key] = []byte(value)
-
+	kv.data[string(key)] = []byte(value)
 	return nil
 }
 
-func (kv *KV) Get(key string) ([]byte, bool) {
+func (kv *KV) Get(key []byte) ([]byte, bool) {
 	kv.mu.Lock()
 	defer kv.mu.Unlock()
-
-	v, ok := kv.data[key]
-
-	return v, ok
+	value, ok :=  kv.data[string(key)]
+	return value, ok
 }
 
 
